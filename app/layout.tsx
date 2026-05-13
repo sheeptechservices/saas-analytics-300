@@ -10,7 +10,7 @@ const manrope = Manrope({
 })
 
 export const metadata: Metadata = {
-  title: 'SASBI 3D',
+  title: '300 Franchising',
   description: 'Analytics · Insights · IA',
 }
 
