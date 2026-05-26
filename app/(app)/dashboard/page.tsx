@@ -453,14 +453,29 @@ function formatAgo(dateStr: string) {
   return `${Math.floor(h / 24)}d atrás`
 }
 
-/* Parse "Usuario: João\nmensagem: texto" ou retorna o conteúdo puro */
+/* Parse "Usuario: João\nmensagem: texto" — extrai nome e mensagem */
 function parseHumanContent(content: string): { name: string; message: string } {
   const nameMatch = content.match(/^Usuario:\s*(.+)/m)
   const msgMatch  = content.match(/^mensagem:\s*([\s\S]+)/m)
+  const name = nameMatch?.[1]?.trim()
   return {
-    name:    nameMatch?.[1]?.trim() ?? 'Desconhecido',
-    message: msgMatch?.[1]?.trim()  ?? content.trim(),
+    name:    (name && name.length > 0) ? name : 'Desconhecido',
+    message: msgMatch?.[1]?.trim() ?? content.trim(),
   }
+}
+
+/* Tenta extrair o nome do lead a partir de uma mensagem da IA.
+   A IA geralmente inicia com "Nome, ..." ou "Oi Nome!" ou "Olá Nome,".
+   Retorna null se não conseguir extrair. */
+function extractNameFromAIContent(content: string): string | null {
+  const text = content.trim()
+  // Padrão: "Nome," no início (ex: "Gabriel, sua reunião...")
+  const commaMatch = text.match(/^([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][a-záéíóúâêîôûãõç]+(?:\s[A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][a-záéíóúâêîôûãõç]+)?),/)
+  if (commaMatch) return commaMatch[1].trim()
+  // Padrão: "Oi Nome!" ou "Olá Nome,"
+  const greetMatch = text.match(/^(?:Oi|Olá|Ola)\s+([A-ZÁÉÍÓÚÂÊÎÔÛÃÕÇ][a-záéíóúâêîôûãõç]+)[!,]/)
+  if (greetMatch) return greetMatch[1].trim()
+  return null
 }
 
 /* +55 31 99999-9999 */
@@ -933,12 +948,12 @@ export default function DashboardPage() {
           .select('*')
           .order('id', { ascending: false })
           .limit(30),
-        // Query dedicada: só mensagens humanas para extrair nomes com segurança
+        // Query de nomes: busca mensagens humanas E da IA para extrair nome do lead
+        // (IA sempre cumprimenta pelo nome; humano às vezes tem Usuario: vazio)
         supabase.from('n8n_chat_histories')
           .select('session_id, message')
-          .eq('message->>type', 'human')
           .order('id', { ascending: false })
-          .limit(200),
+          .limit(400),
       ])
 
       if (funnelRes.error) throw funnelRes.error
@@ -951,14 +966,28 @@ export default function DashboardPage() {
       setTotalLogsCount(logsRes.count ?? logsRes.data?.length ?? 0)
       setRecentChats((chatsRes.data ?? []) as ChatHistory[])
 
-      // Monta mapa session_id → nome a partir das mensagens humanas
+      // Monta mapa session_id → nome
+      // Prioridade: 1) campo "Usuario:" da msg humana  2) nome extraído da msg da IA
       const nameMap = new Map<string, string>()
+      const aiNameMap = new Map<string, string>() // fallback via respostas da IA
+
       for (const row of (namesRes.data ?? []) as ChatHistory[]) {
-        if (!nameMap.has(row.session_id)) {
-          const { name } = parseHumanContent(row.message.content)
+        const { type, content } = row.message
+        if (type === 'human' && !nameMap.has(row.session_id)) {
+          const { name } = parseHumanContent(content)
           if (name !== 'Desconhecido') nameMap.set(row.session_id, name)
         }
+        if (type === 'ai' && !aiNameMap.has(row.session_id)) {
+          const extracted = extractNameFromAIContent(content)
+          if (extracted) aiNameMap.set(row.session_id, extracted)
+        }
       }
+
+      // Aplica fallback da IA para sessões sem nome na mensagem humana
+      for (const [sessionId, aiName] of aiNameMap.entries()) {
+        if (!nameMap.has(sessionId)) nameMap.set(sessionId, aiName)
+      }
+
       setChatNames(nameMap)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Erro ao carregar dados')
