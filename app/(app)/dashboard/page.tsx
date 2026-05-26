@@ -474,7 +474,18 @@ function formatPhone(phone: string): string {
   return phone
 }
 
-function ActivityFeed({ items, loading }: { items: ChatHistory[]; loading: boolean }) {
+/* ══════════════════════════════════════════
+   ACTIVITY FEED (lista de conversas recentes)
+══════════════════════════════════════════ */
+function ActivityFeed({
+  items, loading, onSelect,
+}: {
+  items: ChatHistory[]
+  loading: boolean
+  onSelect: (sessionId: string, name: string) => void
+}) {
+  const [hov, setHov] = useState<number | null>(null)
+
   if (loading) return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {Array.from({ length: 5 }).map((_, i) => (
@@ -489,68 +500,374 @@ function ActivityFeed({ items, loading }: { items: ChatHistory[]; loading: boole
     </div>
   )
 
+  /* Deduplica: mostra apenas a mensagem mais recente por session_id */
+  const seen = new Set<string>()
+  const deduped = items.filter(item => {
+    if (seen.has(item.session_id)) return false
+    seen.add(item.session_id)
+    return true
+  })
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-      {items.map((item, idx) => {
+      {deduped.map((item, idx) => {
         const isHuman = item.message.type === 'human'
         const { name, message } = isHuman
           ? parseHumanContent(item.message.content)
           : { name: 'IA', message: item.message.content.trim() }
-        const preview  = message.slice(0, 70) + (message.length > 70 ? '…' : '')
+        const preview  = message.slice(0, 65) + (message.length > 65 ? '…' : '')
         const phone    = formatPhone(item.session_id)
-        const bgColor  = isHuman ? '#2563eb' : 'var(--primary)'
-        const badgeBg  = isHuman ? '#2563eb18' : 'var(--primary-dim)'
-        const badgeClr = isHuman ? '#2563eb'   : 'var(--primary)'
+        const isHov    = hov === item.id
 
         return (
-          <div key={item.id} style={{
-            display: 'flex', alignItems: 'flex-start', gap: 10,
-            padding: '10px 0',
-            borderBottom: idx < items.length - 1 ? '1px solid var(--gray3)' : 'none',
-          }}>
+          <div
+            key={item.id}
+            onClick={() => onSelect(item.session_id, isHuman ? name : phone)}
+            onMouseEnter={() => setHov(item.id)}
+            onMouseLeave={() => setHov(null)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              padding: '10px 8px',
+              borderRadius: 10,
+              borderBottom: idx < deduped.length - 1 ? '1px solid var(--gray3)' : 'none',
+              cursor: 'pointer',
+              background: isHov ? 'var(--gray3)' : 'transparent',
+              transition: 'background .14s ease',
+            }}
+          >
             {/* Avatar */}
             <div style={{
-              width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-              background: `${bgColor}18`,
-              border: `1px solid ${bgColor}30`,
+              width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+              background: 'linear-gradient(135deg, #D93025 0%, #a8201a 100%)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 15,
+              color: '#fff', fontSize: 13, fontWeight: 800,
+              boxShadow: '0 2px 6px rgba(217,48,37,0.35)',
             }}>
-              {isHuman ? '👤' : '🤖'}
+              {isHuman ? (name.charAt(0).toUpperCase() || '?') : '✦'}
             </div>
 
             {/* Content */}
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--black)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {isHuman ? name : 'Resposta IA'}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--black)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {isHuman ? name : phone}
                 </div>
-                <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 100, background: badgeBg, color: badgeClr, border: `1px solid ${badgeClr}25`, flexShrink: 0 }}>
-                  {isHuman ? 'cliente' : 'ia'}
-                </span>
+                <div style={{ fontSize: 10, color: 'var(--gray2)', fontWeight: 600, flexShrink: 0, marginLeft: 8 }}>
+                  #{item.id}
+                </div>
               </div>
               <div style={{ fontSize: 11, color: 'var(--gray)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {isHuman ? phone : preview}
+                {isHuman
+                  ? <><span style={{ color: 'var(--gray2)' }}>{phone} · </span>{preview}</>
+                  : <><span style={{ color: 'var(--primary)', fontWeight: 700 }}>IA: </span>{preview}</>
+                }
               </div>
-              {isHuman && (
-                <div style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
-                  {preview}
-                </div>
-              )}
             </div>
 
-            {/* ID badge (sem timestamp na tabela) */}
-            <div style={{ fontSize: 10, color: 'var(--gray2)', fontWeight: 600, flexShrink: 0 }}>
-              #{item.id}
-            </div>
+            {/* Chevron */}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray2)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: isHov ? 1 : 0, transition: 'opacity .14s' }}>
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
           </div>
         )
       })}
-      {items.length === 0 && (
+      {deduped.length === 0 && (
         <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--gray2)', fontSize: 13 }}>
           Nenhuma conversa registrada
         </div>
       )}
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════
+   CHAT MODAL — WhatsApp style
+══════════════════════════════════════════ */
+function ChatModal({
+  sessionId, contactName, onClose,
+}: {
+  sessionId: string
+  contactName: string
+  onClose: () => void
+}) {
+  const [messages, setMessages]     = useState<ChatHistory[]>([])
+  const [loading, setLoading]       = useState(true)
+  const [lastCount, setLastCount]   = useState(0)
+  const [tick, setTick]             = useState(0)       // segundos desde último refresh
+  const [newMsg, setNewMsg]         = useState(false)   // flash de nova mensagem
+  const bottomRef  = useRef<HTMLDivElement>(null)
+  const isFirstRef = useRef(true)
+  const phone      = formatPhone(sessionId)
+
+  /* Busca mensagens da sessão */
+  useEffect(() => {
+    let cancelled = false
+
+    const fetch = async () => {
+      const { data } = await supabase
+        .from('n8n_chat_histories')
+        .select('*')
+        .eq('session_id', sessionId)
+        .order('id', { ascending: true })
+
+      if (!cancelled && data) {
+        const prev = isFirstRef.current ? 0 : lastCount
+        if (data.length > prev && !isFirstRef.current) setNewMsg(true)
+        setMessages(data as ChatHistory[])
+        setLastCount(data.length)
+        setLoading(false)
+        setTick(0)
+        isFirstRef.current = false
+      }
+    }
+
+    fetch()
+    const poll    = setInterval(fetch, 3000)
+    const ticker  = setInterval(() => setTick(t => t + 1), 1000)
+    return () => { cancelled = true; clearInterval(poll); clearInterval(ticker) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId])
+
+  /* Auto-scroll para o fim */
+  useEffect(() => {
+    if (messages.length === 0) return
+    bottomRef.current?.scrollIntoView({ behavior: isFirstRef.current ? 'auto' : 'smooth' })
+  }, [messages.length])
+
+  /* Limpa flash de nova mensagem */
+  useEffect(() => {
+    if (!newMsg) return
+    const t = setTimeout(() => setNewMsg(false), 2000)
+    return () => clearTimeout(t)
+  }, [newMsg])
+
+  /* Fecha com Escape */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const tickLabel = tick === 0 ? 'agora mesmo' : tick < 60 ? `${tick}s atrás` : `${Math.floor(tick / 60)}min atrás`
+
+  return (
+    /* Backdrop */
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(0,0,0,0.55)',
+        backdropFilter: 'blur(4px)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '24px 16px',
+        animation: 'fadeIn .18s ease',
+      }}
+    >
+      {/* Modal */}
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 520,
+          height: '82vh', maxHeight: 720,
+          display: 'flex', flexDirection: 'column',
+          borderRadius: 20,
+          overflow: 'hidden',
+          boxShadow: '0 32px 80px rgba(0,0,0,0.45)',
+          animation: 'slideUp .22s cubic-bezier(.4,0,.2,1)',
+        }}
+      >
+        {/* ── HEADER ── */}
+        <div style={{
+          background: 'linear-gradient(135deg, #1a1a1a 0%, #2d1010 50%, #D93025 100%)',
+          padding: '16px 20px',
+          display: 'flex', alignItems: 'center', gap: 12,
+          flexShrink: 0,
+        }}>
+          {/* Back button */}
+          <button onClick={onClose} style={{
+            background: 'rgba(255,255,255,0.12)', border: 'none',
+            borderRadius: 8, width: 32, height: 32, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#fff', flexShrink: 0, transition: 'background .15s',
+          }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.22)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.12)')}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+
+          {/* Avatar */}
+          <div style={{
+            width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
+            background: 'rgba(255,255,255,0.18)',
+            border: '2px solid rgba(255,255,255,0.3)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            color: '#fff', fontSize: 15, fontWeight: 800,
+          }}>
+            {contactName.charAt(0).toUpperCase()}
+          </div>
+
+          {/* Name + phone */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {contactName}
+            </div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', marginTop: 1 }}>
+              {phone}
+            </div>
+          </div>
+
+          {/* Live badge */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            background: 'rgba(255,255,255,0.12)',
+            borderRadius: 20, padding: '4px 10px',
+            flexShrink: 0,
+          }}>
+            <div style={{
+              width: 7, height: 7, borderRadius: '50%',
+              background: newMsg ? '#4ade80' : '#86efac',
+              boxShadow: newMsg ? '0 0 8px #4ade80' : 'none',
+              animation: 'liveDot 1.8s ease-in-out infinite',
+            }} />
+            <span style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.85)' }}>ao vivo</span>
+          </div>
+        </div>
+
+        {/* ── MESSAGES AREA ── */}
+        <div style={{
+          flex: 1, overflowY: 'auto', overflowX: 'hidden',
+          padding: '16px 16px 8px',
+          background: '#f0f2f5',
+          backgroundImage: 'radial-gradient(rgba(0,0,0,0.04) 1px, transparent 1px)',
+          backgroundSize: '20px 20px',
+          display: 'flex', flexDirection: 'column', gap: 4,
+        }}>
+          {loading && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 8 }}>
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: i % 2 === 0 ? 'flex-start' : 'flex-end' }}>
+                  <Skeleton w={i % 3 === 0 ? '60%' : i % 3 === 1 ? '45%' : '72%'} h={36} r={14} />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!loading && messages.length === 0 && (
+            <div style={{ textAlign: 'center', margin: 'auto', color: 'var(--gray2)', fontSize: 13 }}>
+              Nenhuma mensagem nesta conversa
+            </div>
+          )}
+
+          {!loading && messages.map((msg, idx) => {
+            const isAI     = msg.message.type === 'ai'
+            const isHuman  = msg.message.type === 'human'
+            const { message: text } = isHuman
+              ? parseHumanContent(msg.message.content)
+              : { message: msg.message.content.trim() }
+
+            /* Agrupa mensagens consecutivas do mesmo remetente */
+            const prevSame = idx > 0 && messages[idx - 1].message.type === msg.message.type
+            const nextSame = idx < messages.length - 1 && messages[idx + 1].message.type === msg.message.type
+
+            const bubbleRadius = isAI
+              ? `${prevSame ? 4 : 18}px 18px 18px ${nextSame ? 4 : 18}px`
+              : `18px ${prevSame ? 4 : 18}px ${nextSame ? 4 : 18}px 18px`
+
+            return (
+              <div
+                key={msg.id}
+                style={{
+                  display: 'flex',
+                  flexDirection: isAI ? 'row' : 'row-reverse',
+                  alignItems: 'flex-end',
+                  gap: 6,
+                  marginTop: prevSame ? 2 : 10,
+                }}
+              >
+                {/* Avatar (só no primeiro de um grupo) */}
+                <div style={{ width: 26, flexShrink: 0, marginBottom: 2 }}>
+                  {!nextSame && (
+                    <div style={{
+                      width: 26, height: 26, borderRadius: '50%',
+                      background: isAI
+                        ? 'linear-gradient(135deg, #D93025, #a8201a)'
+                        : 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 11, color: '#fff', fontWeight: 800,
+                    }}>
+                      {isAI ? '✦' : contactName.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                </div>
+
+                {/* Bubble */}
+                <div style={{
+                  maxWidth: '72%',
+                  background: isAI ? '#ffffff' : '#e3f2fd',
+                  borderRadius: bubbleRadius,
+                  padding: '8px 12px',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.10)',
+                  border: isAI ? '1px solid rgba(0,0,0,0.06)' : '1px solid rgba(37,99,235,0.15)',
+                  position: 'relative',
+                }}>
+                  {/* Label remetente (só no primeiro do grupo) */}
+                  {!prevSame && (
+                    <div style={{
+                      fontSize: 10, fontWeight: 800, marginBottom: 3,
+                      color: isAI ? '#D93025' : '#2563eb',
+                    }}>
+                      {isAI ? '✦ IA — Sofia' : contactName}
+                    </div>
+                  )}
+
+                  <div style={{
+                    fontSize: 13, color: '#111', lineHeight: 1.5,
+                    whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                  }}>
+                    {text}
+                  </div>
+
+                  {/* ID / timestamp proxy */}
+                  <div style={{
+                    fontSize: 9, color: 'rgba(0,0,0,0.35)', fontWeight: 600,
+                    textAlign: 'right', marginTop: 4,
+                  }}>
+                    #{msg.id}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+
+          <div ref={bottomRef} style={{ height: 4 }} />
+        </div>
+
+        {/* ── FOOTER ── */}
+        <div style={{
+          background: '#fff',
+          borderTop: '1px solid rgba(0,0,0,0.08)',
+          padding: '10px 16px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          flexShrink: 0,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{
+              width: 7, height: 7, borderRadius: '50%',
+              background: '#22c55e',
+              animation: 'liveDot 1.8s ease-in-out infinite',
+            }} />
+            <span style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 600 }}>
+              Atualiza a cada 3s · {tickLabel}
+            </span>
+          </div>
+          <span style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 700 }}>
+            {messages.length} mensagens
+          </span>
+        </div>
+      </div>
     </div>
   )
 }
@@ -596,6 +913,7 @@ export default function DashboardPage() {
   const [leadLogs, setLeadLogs] = useState<LeadLog[]>([])
   const [totalLogsCount, setTotalLogsCount] = useState(0)
   const [recentChats, setRecentChats] = useState<ChatHistory[]>([])
+  const [chatSession, setChatSession] = useState<{ sessionId: string; name: string } | null>(null)
 
   const fetchData = useCallback(async (p: Period) => {
     setLoading(true)
@@ -859,8 +1177,21 @@ export default function DashboardPage() {
             </span>
           )}
         </div>
-        <ActivityFeed items={recentChats} loading={loading} />
+        <ActivityFeed
+          items={recentChats}
+          loading={loading}
+          onSelect={(sessionId, name) => setChatSession({ sessionId, name })}
+        />
       </div>
+
+      {/* Chat Modal */}
+      {chatSession && (
+        <ChatModal
+          sessionId={chatSession.sessionId}
+          contactName={chatSession.name}
+          onClose={() => setChatSession(null)}
+        />
+      )}
     </div>
   )
 }
