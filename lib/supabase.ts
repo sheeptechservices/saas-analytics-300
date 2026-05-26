@@ -43,3 +43,14 @@ export interface LeadImport {
   status: string
   created_at: string
 }
+
+export interface ChatHistory {
+  id: number
+  session_id: string
+  message: {
+    type: 'human' | 'ai'
+    content: string
+    additional_kwargs?: Record<string, unknown>
+    response_metadata?: Record<string, unknown>
+  }
+}

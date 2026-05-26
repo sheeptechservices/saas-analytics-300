@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { formatNumber, formatPercent } from '@/lib/utils'
 import { supabase } from '@/lib/supabase'
-import type { FunnelMetric, LeadLog, LeadImport } from '@/lib/supabase'
+import type { FunnelMetric, LeadLog, LeadImport, ChatHistory } from '@/lib/supabase'
 
 /* ══════════════════════════════════════════
    PERIOD CONFIG
@@ -453,7 +453,28 @@ function formatAgo(dateStr: string) {
   return `${Math.floor(h / 24)}d atrás`
 }
 
-function ActivityFeed({ items, loading }: { items: LeadLog[]; loading: boolean }) {
+/* Parse "Usuario: João\nmensagem: texto" ou retorna o conteúdo puro */
+function parseHumanContent(content: string): { name: string; message: string } {
+  const nameMatch = content.match(/^Usuario:\s*(.+)/m)
+  const msgMatch  = content.match(/^mensagem:\s*([\s\S]+)/m)
+  return {
+    name:    nameMatch?.[1]?.trim() ?? 'Desconhecido',
+    message: msgMatch?.[1]?.trim()  ?? content.trim(),
+  }
+}
+
+/* +55 31 99999-9999 */
+function formatPhone(phone: string): string {
+  if (phone.length >= 12 && phone.startsWith('55')) {
+    const area = phone.slice(2, 4)
+    const num  = phone.slice(4)
+    if (num.length === 9) return `+55 (${area}) ${num.slice(0, 5)}-${num.slice(5)}`
+    if (num.length === 8) return `+55 (${area}) ${num.slice(0, 4)}-${num.slice(4)}`
+  }
+  return phone
+}
+
+function ActivityFeed({ items, loading }: { items: ChatHistory[]; loading: boolean }) {
   if (loading) return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {Array.from({ length: 5 }).map((_, i) => (
@@ -471,46 +492,63 @@ function ActivityFeed({ items, loading }: { items: LeadLog[]; loading: boolean }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
       {items.map((item, idx) => {
-        const sent = item.sentimento ?? 'neutro'
-        const color = SENTIMENT_COLOR[sent] ?? '#2563eb'
-        const preview = item.mensagem_input?.slice(0, 40) + (item.mensagem_input?.length > 40 ? '…' : '')
-        const responsePreview = item.mensagem_output?.slice(0, 60) + (item.mensagem_output?.length > 60 ? '…' : '')
+        const isHuman = item.message.type === 'human'
+        const { name, message } = isHuman
+          ? parseHumanContent(item.message.content)
+          : { name: 'IA', message: item.message.content.trim() }
+        const preview  = message.slice(0, 70) + (message.length > 70 ? '…' : '')
+        const phone    = formatPhone(item.session_id)
+        const bgColor  = isHuman ? '#2563eb' : 'var(--primary)'
+        const badgeBg  = isHuman ? '#2563eb18' : 'var(--primary-dim)'
+        const badgeClr = isHuman ? '#2563eb'   : 'var(--primary)'
+
         return (
           <div key={item.id} style={{
             display: 'flex', alignItems: 'flex-start', gap: 10,
             padding: '10px 0',
             borderBottom: idx < items.length - 1 ? '1px solid var(--gray3)' : 'none',
           }}>
+            {/* Avatar */}
             <div style={{
               width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-              background: `${color}15`, border: `1px solid ${color}30`,
+              background: `${bgColor}18`,
+              border: `1px solid ${bgColor}30`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color,
+              fontSize: 15,
             }}>
-              {SENTIMENT_ICON[sent]}
+              {isHuman ? '👤' : '🤖'}
             </div>
+
+            {/* Content */}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--black)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  Lead: {preview || '—'}
+                  {isHuman ? name : 'Resposta IA'}
                 </div>
-                <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 100, background: `${color}15`, color, border: `1px solid ${color}25`, flexShrink: 0 }}>
-                  {sent}
+                <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 100, background: badgeBg, color: badgeClr, border: `1px solid ${badgeClr}25`, flexShrink: 0 }}>
+                  {isHuman ? 'cliente' : 'ia'}
                 </span>
               </div>
               <div style={{ fontSize: 11, color: 'var(--gray)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                IA: {responsePreview}
+                {isHuman ? phone : preview}
               </div>
+              {isHuman && (
+                <div style={{ fontSize: 11, color: 'var(--gray2)', fontWeight: 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
+                  {preview}
+                </div>
+              )}
             </div>
+
+            {/* ID badge (sem timestamp na tabela) */}
             <div style={{ fontSize: 10, color: 'var(--gray2)', fontWeight: 600, flexShrink: 0 }}>
-              {formatAgo(item.ocorreu_em)}
+              #{item.id}
             </div>
           </div>
         )
       })}
       {items.length === 0 && (
         <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--gray2)', fontSize: 13 }}>
-          Nenhuma interação registrada no período
+          Nenhuma conversa registrada
         </div>
       )}
     </div>
@@ -557,7 +595,7 @@ export default function DashboardPage() {
   const [funnelMetrics, setFunnelMetrics] = useState<FunnelMetric[]>([])
   const [leadLogs, setLeadLogs] = useState<LeadLog[]>([])
   const [totalLogsCount, setTotalLogsCount] = useState(0)
-  const [recentLogs, setRecentLogs] = useState<LeadLog[]>([])
+  const [recentChats, setRecentChats] = useState<ChatHistory[]>([])
 
   const fetchData = useCallback(async (p: Period) => {
     setLoading(true)
@@ -565,7 +603,7 @@ export default function DashboardPage() {
     try {
       const since = periodStart(p).toISOString()
 
-      const [funnelRes, logsRes, recentRes] = await Promise.all([
+      const [funnelRes, logsRes, chatsRes] = await Promise.all([
         supabase.from('funnel_metrics').select('*').order('month', { ascending: true }),
         // count: 'exact' retorna o total real independente do limite de rows
         // limit(5000) cobre os registros atuais e futuros próximos
@@ -573,22 +611,22 @@ export default function DashboardPage() {
           .select('*', { count: 'exact' })
           .gte('criado_em', since)
           .limit(5000),
-        supabase.from('lead_logs')
+        // n8n_chat_histories: sem coluna de data — ordena pelo id mais recente
+        supabase.from('n8n_chat_histories')
           .select('*')
-          .gte('criado_em', since)
-          .order('criado_em', { ascending: false })
-          .limit(20),
+          .order('id', { ascending: false })
+          .limit(30),
       ])
 
       if (funnelRes.error) throw funnelRes.error
       if (logsRes.error)   throw logsRes.error
-      if (recentRes.error) throw recentRes.error
+      if (chatsRes.error)  throw chatsRes.error
 
       setFunnelMetrics(funnelRes.data ?? [])
       // usa o count exato do Supabase quando disponível
       setLeadLogs(logsRes.data ?? [])
       setTotalLogsCount(logsRes.count ?? logsRes.data?.length ?? 0)
-      setRecentLogs(recentRes.data ?? [])
+      setRecentChats((chatsRes.data ?? []) as ChatHistory[])
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Erro ao carregar dados')
     } finally {
@@ -815,13 +853,13 @@ export default function DashboardPage() {
             <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--black)' }}>Conversas Recentes</div>
             <div style={{ fontSize: 11, color: 'var(--gray2)', marginTop: 1 }}>Últimas interações registradas pela IA</div>
           </div>
-          {!loading && recentLogs.length > 0 && (
+          {!loading && recentChats.length > 0 && (
             <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray2)' }}>
-              {recentLogs.length} registros
+              {recentChats.length} mensagens
             </span>
           )}
         </div>
-        <ActivityFeed items={recentLogs} loading={loading} />
+        <ActivityFeed items={recentChats} loading={loading} />
       </div>
     </div>
   )
