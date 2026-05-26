@@ -478,10 +478,11 @@ function formatPhone(phone: string): string {
    ACTIVITY FEED (lista de conversas recentes)
 ══════════════════════════════════════════ */
 function ActivityFeed({
-  items, loading, onSelect,
+  items, loading, nameMap, onSelect,
 }: {
   items: ChatHistory[]
   loading: boolean
+  nameMap: Map<string, string>
   onSelect: (sessionId: string, name: string) => void
 }) {
   const [hov, setHov] = useState<number | null>(null)
@@ -511,10 +512,11 @@ function ActivityFeed({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
       {deduped.map((item, idx) => {
-        const isHuman = item.message.type === 'human'
-        const { name, message } = isHuman
+        const isHuman    = item.message.type === 'human'
+        const leadName   = nameMap.get(item.session_id) ?? formatPhone(item.session_id)
+        const { message } = isHuman
           ? parseHumanContent(item.message.content)
-          : { name: 'IA', message: item.message.content.trim() }
+          : { message: item.message.content.trim() }
         const preview  = message.slice(0, 65) + (message.length > 65 ? '…' : '')
         const phone    = formatPhone(item.session_id)
         const isHov    = hov === item.id
@@ -522,7 +524,7 @@ function ActivityFeed({
         return (
           <div
             key={item.id}
-            onClick={() => onSelect(item.session_id, isHuman ? name : phone)}
+            onClick={() => onSelect(item.session_id, leadName)}
             onMouseEnter={() => setHov(item.id)}
             onMouseLeave={() => setHov(null)}
             style={{
@@ -543,24 +545,23 @@ function ActivityFeed({
               color: '#fff', fontSize: 13, fontWeight: 800,
               boxShadow: '0 2px 6px rgba(217,48,37,0.35)',
             }}>
-              {isHuman ? (name.charAt(0).toUpperCase() || '?') : '✦'}
+              {leadName.charAt(0).toUpperCase() || '?'}
             </div>
 
             {/* Content */}
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--black)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {isHuman ? name : phone}
+                  {leadName}
                 </div>
                 <div style={{ fontSize: 10, color: 'var(--gray2)', fontWeight: 600, flexShrink: 0, marginLeft: 8 }}>
                   #{item.id}
                 </div>
               </div>
               <div style={{ fontSize: 11, color: 'var(--gray)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {isHuman
-                  ? <><span style={{ color: 'var(--gray2)' }}>{phone} · </span>{preview}</>
-                  : <><span style={{ color: 'var(--primary)', fontWeight: 700 }}>IA: </span>{preview}</>
-                }
+                <span style={{ color: 'var(--gray2)' }}>{phone} · </span>
+                {!isHuman && <span style={{ color: 'var(--primary)', fontWeight: 700 }}>IA: </span>}
+                {preview}
               </div>
             </div>
 
@@ -901,6 +902,7 @@ export default function DashboardPage() {
   const [leadLogs, setLeadLogs] = useState<LeadLog[]>([])
   const [totalLogsCount, setTotalLogsCount] = useState(0)
   const [recentChats, setRecentChats] = useState<ChatHistory[]>([])
+  const [chatNames, setChatNames]     = useState<Map<string, string>>(new Map())
   const [chatSession, setChatSession] = useState<{ sessionId: string; name: string } | null>(null)
 
   const fetchData = useCallback(async (p: Period) => {
@@ -909,7 +911,7 @@ export default function DashboardPage() {
     try {
       const since = periodStart(p).toISOString()
 
-      const [funnelRes, logsRes, chatsRes] = await Promise.all([
+      const [funnelRes, logsRes, chatsRes, namesRes] = await Promise.all([
         supabase.from('funnel_metrics').select('*').order('month', { ascending: true }),
         // count: 'exact' retorna o total real independente do limite de rows
         // limit(5000) cobre os registros atuais e futuros próximos
@@ -922,17 +924,33 @@ export default function DashboardPage() {
           .select('*')
           .order('id', { ascending: false })
           .limit(30),
+        // Query dedicada: só mensagens humanas para extrair nomes com segurança
+        supabase.from('n8n_chat_histories')
+          .select('session_id, message')
+          .eq('message->>type', 'human')
+          .order('id', { ascending: false })
+          .limit(200),
       ])
 
       if (funnelRes.error) throw funnelRes.error
       if (logsRes.error)   throw logsRes.error
       if (chatsRes.error)  throw chatsRes.error
+      // namesRes pode falhar silenciosamente — não bloqueia o restante
 
       setFunnelMetrics(funnelRes.data ?? [])
-      // usa o count exato do Supabase quando disponível
       setLeadLogs(logsRes.data ?? [])
       setTotalLogsCount(logsRes.count ?? logsRes.data?.length ?? 0)
       setRecentChats((chatsRes.data ?? []) as ChatHistory[])
+
+      // Monta mapa session_id → nome a partir das mensagens humanas
+      const nameMap = new Map<string, string>()
+      for (const row of (namesRes.data ?? []) as ChatHistory[]) {
+        if (!nameMap.has(row.session_id)) {
+          const { name } = parseHumanContent(row.message.content)
+          if (name !== 'Desconhecido') nameMap.set(row.session_id, name)
+        }
+      }
+      setChatNames(nameMap)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Erro ao carregar dados')
     } finally {
@@ -1168,6 +1186,7 @@ export default function DashboardPage() {
         <ActivityFeed
           items={recentChats}
           loading={loading}
+          nameMap={chatNames}
           onSelect={(sessionId, name) => setChatSession({ sessionId, name })}
         />
       </div>
