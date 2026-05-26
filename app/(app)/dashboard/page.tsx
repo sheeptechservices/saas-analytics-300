@@ -613,19 +613,20 @@ export default function DashboardPage() {
   /* Sparkline data from monthly totals */
   const monthlyTotals = funnelMetrics.map(m => m.total_leads)
 
-  /* Meetings detected from lead_logs (output contains "confirmada" or "agendada") */
-  const meetingsCount = recentLogs.filter(l =>
-    l.mensagem_output?.toLowerCase().includes('confirmada') ||
-    l.mensagem_output?.toLowerCase().includes('agendada') ||
-    l.mensagem_output?.toLowerCase().includes('consultoria')
-  ).length
+  /* Funnel — soma de cada coluna do funnel_metrics */
+  const totalContacted  = funnelMetrics.reduce((s, m) => s + m.contacted_count,  0)
+  const totalResponded  = funnelMetrics.reduce((s, m) => s + m.response_count,   0)
+  const totalMeetings   = funnelMetrics.reduce((s, m) => s + m.meeting_count,    0)
+  const totalProposals  = funnelMetrics.reduce((s, m) => s + m.proposal_count,   0)
+  const totalClosed     = funnelMetrics.reduce((s, m) => s + m.closed_count,     0)
 
-  /* Funnel steps based on real data */
   const funnelData: FunnelStage[] = [
-    { label: 'Disparados',  value: totalLeads,          color: '#D93025' },
-    { label: 'Conversaram', value: totalInteractions,   color: '#E05540' },
-    { label: 'Positivos',   value: positiveCount,       color: '#E87060' },
-    { label: 'Consultorias', value: Math.max(meetingsCount, 1), color: '#F09080' },
+    { label: 'Disparados',  value: totalLeads,      color: '#D93025' },
+    { label: 'Contatados',  value: totalContacted,  color: '#E05540' },
+    { label: 'Responderam', value: totalResponded,  color: '#E87060' },
+    { label: 'Reuniões',    value: totalMeetings,   color: '#F09080' },
+    { label: 'Propostas',   value: totalProposals,  color: '#F8B0A0' },
+    { label: 'Fechamentos', value: totalClosed,     color: '#FDD0C8' },
   ]
 
   /* Month-over-month change for KPIs */
@@ -712,7 +713,7 @@ export default function DashboardPage() {
             <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--black)' }}>Funil de Atendimento IA</div>
             <div style={{ fontSize: 12, color: 'var(--gray2)', marginTop: 2 }}>Passe o mouse sobre cada etapa para detalhes</div>
           </div>
-          <AskAIButton question={`Analise meu funil de atendimento IA: ${totalLeads.toLocaleString()} disparados → ${totalInteractions} conversaram → ${positiveCount} positivos → ${meetingsCount} consultorias. Quais etapas têm maior perda e o que devo fazer?`} />
+          <AskAIButton question={`Analise meu funil: ${totalLeads} disparados → ${totalContacted} contatados → ${totalResponded} responderam → ${totalMeetings} reuniões → ${totalProposals} propostas → ${totalClosed} fechamentos. Quais etapas têm maior perda?`} />
         </div>
         {loading
           ? <div style={{ height: 150, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Skeleton w="100%" h={120} r={8} /></div>
