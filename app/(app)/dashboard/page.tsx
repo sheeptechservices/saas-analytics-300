@@ -768,14 +768,6 @@ function ChatModal({
               ? parseHumanContent(msg.message.content)
               : { message: msg.message.content.trim() }
 
-            /* Agrupa mensagens consecutivas do mesmo remetente */
-            const prevSame = idx > 0 && messages[idx - 1].message.type === msg.message.type
-            const nextSame = idx < messages.length - 1 && messages[idx + 1].message.type === msg.message.type
-
-            const bubbleRadius = isAI
-              ? `${prevSame ? 4 : 18}px 18px 18px ${nextSame ? 4 : 18}px`
-              : `18px ${prevSame ? 4 : 18}px ${nextSame ? 4 : 18}px 18px`
-
             return (
               <div
                 key={msg.id}
@@ -784,44 +776,40 @@ function ChatModal({
                   flexDirection: isAI ? 'row' : 'row-reverse',
                   alignItems: 'flex-end',
                   gap: 6,
-                  marginTop: prevSame ? 2 : 10,
+                  marginTop: 8,
                 }}
               >
-                {/* Avatar (só no primeiro de um grupo) */}
+                {/* Avatar */}
                 <div style={{ width: 26, flexShrink: 0, marginBottom: 2 }}>
-                  {!nextSame && (
-                    <div style={{
-                      width: 26, height: 26, borderRadius: '50%',
-                      background: isAI
-                        ? 'linear-gradient(135deg, #D93025, #a8201a)'
-                        : 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 11, color: '#fff', fontWeight: 800,
-                    }}>
-                      {isAI ? '✦' : contactName.charAt(0).toUpperCase()}
-                    </div>
-                  )}
+                  <div style={{
+                    width: 26, height: 26, borderRadius: '50%',
+                    background: isAI
+                      ? 'linear-gradient(135deg, #D93025, #a8201a)'
+                      : 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 11, color: '#fff', fontWeight: 800,
+                  }}>
+                    {isAI ? '✦' : contactName.charAt(0).toUpperCase()}
+                  </div>
                 </div>
 
                 {/* Bubble */}
                 <div style={{
                   maxWidth: '72%',
                   background: isAI ? '#ffffff' : '#e3f2fd',
-                  borderRadius: bubbleRadius,
+                  borderRadius: 18,
                   padding: '8px 12px',
                   boxShadow: '0 1px 2px rgba(0,0,0,0.10)',
                   border: isAI ? '1px solid rgba(0,0,0,0.06)' : '1px solid rgba(37,99,235,0.15)',
                   position: 'relative',
                 }}>
-                  {/* Label remetente (só no primeiro do grupo) */}
-                  {!prevSame && (
-                    <div style={{
-                      fontSize: 10, fontWeight: 800, marginBottom: 3,
-                      color: isAI ? '#D93025' : '#2563eb',
-                    }}>
-                      {isAI ? '✦ IA — Sofia' : contactName}
-                    </div>
-                  )}
+                  {/* Label remetente */}
+                  <div style={{
+                    fontSize: 10, fontWeight: 800, marginBottom: 3,
+                    color: isAI ? '#D93025' : '#2563eb',
+                  }}>
+                    {isAI ? '✦ IA — Sofia' : contactName}
+                  </div>
 
                   <div style={{
                     fontSize: 13, color: '#111', lineHeight: 1.5,
