@@ -762,16 +762,20 @@ function ChatModal({
             </div>
           )}
 
-          {!loading && messages.map((msg, idx) => {
-            const isAI     = msg.message.type === 'ai'
-            const isHuman  = msg.message.type === 'human'
-            const { message: text } = isHuman
-              ? parseHumanContent(msg.message.content)
-              : { message: msg.message.content.trim() }
+          {!loading && messages.flatMap((msg) => {
+            const isAI    = msg.message.type === 'ai'
+            const isHuman = msg.message.type === 'human'
 
-            return (
+            /* Mensagens da IA podem ter múltiplas partes separadas por \n\n
+               (o n8n envia mensagens distintas no WhatsApp mas grava num único row).
+               Cada segmento não-vazio vira um balão independente. */
+            const segments: string[] = isAI
+              ? msg.message.content.split('\n\n').map(s => s.trim()).filter(Boolean)
+              : [parseHumanContent(msg.message.content).message]
+
+            return segments.map((text, segIdx) => (
               <div
-                key={msg.id}
+                key={`${msg.id}-${segIdx}`}
                 style={{
                   display: 'flex',
                   flexDirection: isAI ? 'row' : 'row-reverse',
@@ -780,18 +784,20 @@ function ChatModal({
                   marginTop: 8,
                 }}
               >
-                {/* Avatar */}
+                {/* Avatar — só no último segmento do grupo */}
                 <div style={{ width: 26, flexShrink: 0, marginBottom: 2 }}>
-                  <div style={{
-                    width: 26, height: 26, borderRadius: '50%',
-                    background: isAI
-                      ? 'linear-gradient(135deg, #D93025, #a8201a)'
-                      : 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 11, color: '#fff', fontWeight: 800,
-                  }}>
-                    {isAI ? '✦' : contactName.charAt(0).toUpperCase()}
-                  </div>
+                  {segIdx === segments.length - 1 && (
+                    <div style={{
+                      width: 26, height: 26, borderRadius: '50%',
+                      background: isAI
+                        ? 'linear-gradient(135deg, #D93025, #a8201a)'
+                        : 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: 11, color: '#fff', fontWeight: 800,
+                    }}>
+                      {isAI ? '✦' : contactName.charAt(0).toUpperCase()}
+                    </div>
+                  )}
                 </div>
 
                 {/* Bubble */}
@@ -802,15 +808,16 @@ function ChatModal({
                   padding: '8px 12px',
                   boxShadow: '0 1px 2px rgba(0,0,0,0.10)',
                   border: isAI ? '1px solid rgba(0,0,0,0.06)' : '1px solid rgba(37,99,235,0.15)',
-                  position: 'relative',
                 }}>
-                  {/* Label remetente */}
-                  <div style={{
-                    fontSize: 10, fontWeight: 800, marginBottom: 3,
-                    color: isAI ? '#D93025' : '#2563eb',
-                  }}>
-                    {isAI ? '✦ IA — Sofia' : contactName}
-                  </div>
+                  {/* Label remetente — só no primeiro segmento */}
+                  {segIdx === 0 && (
+                    <div style={{
+                      fontSize: 10, fontWeight: 800, marginBottom: 3,
+                      color: isAI ? '#D93025' : '#2563eb',
+                    }}>
+                      {isAI ? '✦ IA — Sofia' : contactName}
+                    </div>
+                  )}
 
                   <div style={{
                     fontSize: 13, color: '#111', lineHeight: 1.5,
@@ -819,16 +826,18 @@ function ChatModal({
                     {text}
                   </div>
 
-                  {/* ID / timestamp proxy */}
-                  <div style={{
-                    fontSize: 9, color: 'rgba(0,0,0,0.35)', fontWeight: 600,
-                    textAlign: 'right', marginTop: 4,
-                  }}>
-                    #{msg.id}
-                  </div>
+                  {/* ID — só no último segmento */}
+                  {segIdx === segments.length - 1 && (
+                    <div style={{
+                      fontSize: 9, color: 'rgba(0,0,0,0.35)', fontWeight: 600,
+                      textAlign: 'right', marginTop: 4,
+                    }}>
+                      #{msg.id}
+                    </div>
+                  )}
                 </div>
               </div>
-            )
+            ))
           })}
 
           <div ref={bottomRef} style={{ height: 4 }} />
