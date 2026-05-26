@@ -556,6 +556,7 @@ export default function DashboardPage() {
   // Raw data from Supabase
   const [funnelMetrics, setFunnelMetrics] = useState<FunnelMetric[]>([])
   const [leadLogs, setLeadLogs] = useState<LeadLog[]>([])
+  const [totalLogsCount, setTotalLogsCount] = useState(0)
   const [recentLogs, setRecentLogs] = useState<LeadLog[]>([])
 
   const fetchData = useCallback(async (p: Period) => {
@@ -566,8 +567,17 @@ export default function DashboardPage() {
 
       const [funnelRes, logsRes, recentRes] = await Promise.all([
         supabase.from('funnel_metrics').select('*').order('month', { ascending: true }),
-        supabase.from('lead_logs').select('*').gte('criado_em', since),
-        supabase.from('lead_logs').select('*').gte('criado_em', since).order('criado_em', { ascending: false }).limit(20),
+        // count: 'exact' retorna o total real independente do limite de rows
+        // limit(5000) cobre os registros atuais e futuros próximos
+        supabase.from('lead_logs')
+          .select('*', { count: 'exact' })
+          .gte('criado_em', since)
+          .limit(5000),
+        supabase.from('lead_logs')
+          .select('*')
+          .gte('criado_em', since)
+          .order('criado_em', { ascending: false })
+          .limit(20),
       ])
 
       if (funnelRes.error) throw funnelRes.error
@@ -575,7 +585,9 @@ export default function DashboardPage() {
       if (recentRes.error) throw recentRes.error
 
       setFunnelMetrics(funnelRes.data ?? [])
+      // usa o count exato do Supabase quando disponível
       setLeadLogs(logsRes.data ?? [])
+      setTotalLogsCount(logsRes.count ?? logsRes.data?.length ?? 0)
       setRecentLogs(recentRes.data ?? [])
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Erro ao carregar dados')
@@ -654,7 +666,7 @@ export default function DashboardPage() {
     },
     {
       label: 'Interações IA',
-      value: totalInteractions,
+      value: totalLogsCount,
       suffix: '',
       change: 0,
       sparkData: monthlyTotals.map(v => Math.round(v * 0.05)),
@@ -742,7 +754,7 @@ export default function DashboardPage() {
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16 }}>
             <div>
               <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--black)', marginBottom: 2 }}>Sentimento das Conversas</div>
-              <div style={{ fontSize: 11, color: 'var(--gray2)' }}>{totalInteractions} interações analisadas</div>
+              <div style={{ fontSize: 11, color: 'var(--gray2)' }}>{totalLogsCount} interações analisadas</div>
             </div>
             <AskAIButton question={`Sentimento das ${totalInteractions} conversas da IA: ${positiveCount} positivos (${formatPercent(positiveRate)}), ${neutroCount} neutros, ${negativeCount} negativos. Analise e sugira melhorias.`} />
           </div>
